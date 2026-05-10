@@ -87,7 +87,7 @@ async def check_link(cd):
     else:
         return False
     
-async def link_rev(cd: str, phoneNumber: str, password: str, uuid: str,link_password: str = None):
+async def link_rev(cd: str, phoneNumber: str, password: str, uuid: str, link_password: str = None, access_token: str = None):
     if "https://" in cd:
         cd=cd.replace("https://pay.paypay.ne.jp/","")
         
@@ -104,44 +104,45 @@ async def link_rev(cd: str, phoneNumber: str, password: str, uuid: str,link_pass
                 link_info = await response.json()
 
             if link_info.get("payload", {}).get("orderStatus") != "PENDING":
-                # ここでも受取待ちかチェック、受取待ちじゃなかったら弾く
                 return False
             
             if link_info.get("payload", {}).get("pendingP2PInfo", {}).get("isSetPasscode") and link_password is None:
                 return False
 
         except aiohttp.ClientError as e:
-            print(f"LINK_REQ_EXC: {e}") #debug :)
+            print(f"LINK_REQ_EXC: {e}")
             return False
         
-        login_payload = {
-            "scope":"SIGN_IN",
-            "client_uuid":f"{uuid}",
-            "grant_type":"password",
-            "username":phoneNumber,
-            "password":password,
-            "add_otp_prefix": True,
-            "language":"ja"
+        # access_tokenが渡されていればログインスキップ
+        if not access_token:
+            login_payload = {
+                "scope":"SIGN_IN",
+                "client_uuid":f"{uuid}",
+                "grant_type":"password",
+                "username":phoneNumber,
+                "password":password,
+                "add_otp_prefix": True,
+                "language":"ja"
             }
 
-        login_headers = {
-            'User-Agent': ua.set(),
-            'Accept' : 'application/json, text/plain, */*',
-            'Content-Type' : 'application/json',
-            'Origin': 'https://www.paypay.ne.jp',
-            'Referer':'https://pay.paypay.ne.jp/'+cd,
-        }
+            login_headers = {
+                'User-Agent': ua.set(),
+                'Accept' : 'application/json, text/plain, */*',
+                'Content-Type' : 'application/json',
+                'Origin': 'https://www.paypay.ne.jp',
+                'Referer':'https://pay.paypay.ne.jp/'+cd,
+            }
 
-        async with session.post("https://www.paypay.ne.jp/app/v1/oauth/token", headers=login_headers, json=login_payload) as response:
-            login_response = await response.json()
-            try:
-                login_response = (login_response["access_token"])
-            except:
+            async with session.post("https://www.paypay.ne.jp/app/v1/oauth/token", headers=login_headers, json=login_payload) as response:
+                login_response = await response.json()
                 try:
-                    login_response["otp_reference_id"]
-                    return "LOGINERR"
+                    access_token = login_response["access_token"]
                 except:
-                    return "LOGINERR"
+                    try:
+                        login_response["otp_reference_id"]
+                        return "LOGINERR"
+                    except:
+                        return "LOGINERR"
         
         receive_payload = {
             "verificationCode":cd,
@@ -153,13 +154,16 @@ async def link_rev(cd: str, phoneNumber: str, password: str, uuid: str,link_pass
             "senderChannelUrl":link_info["payload"]["message"]["chatRoomId"],
             "iosMinimumVersion":"3.45.0",
             "androidMinimumVersion":"3.45.0"
-            }
+        }
         
         if link_password:
             receive_payload["passcode"]=link_password
 
+        # Authorizationヘッダーにaccess_tokenをセット
+        auth_headers = {**base_headers, "Authorization": f"Bearer {access_token}"}
+
         try:
-            async with session.post("https://www.paypay.ne.jp/app/v2/p2p-api/acceptP2PSendMoneyLink", json=receive_payload, headers=base_headers) as response:
+            async with session.post("https://www.paypay.ne.jp/app/v2/p2p-api/acceptP2PSendMoneyLink", json=receive_payload, headers=auth_headers) as response:
                 response.raise_for_status()
                 receive_data = await response.json()
 
@@ -169,7 +173,7 @@ async def link_rev(cd: str, phoneNumber: str, password: str, uuid: str,link_pass
                     return False
 
         except aiohttp.ClientError as e:
-            print(f"REVERR: {e}") #debug :) 
+            print(f"REVERR: {e}")
             return False
     
 
