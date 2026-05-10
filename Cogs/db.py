@@ -1,181 +1,157 @@
 """
-Supabase DB操作モジュール
-全データをSupabaseに保存し、サーバー再起動後も永続化する
+Supabase DB操作モジュール (REST API版)
+supabaseライブラリを使わず、requestsで直接PostgREST APIを叩く
 """
 import os
-from supabase import create_client, Client
+import json
+import time
+import requests
 
-_client: Client = None
+# 接続設定
+URL = os.getenv("SUPABASE_URL")
+KEY = os.getenv("SUPABASE_KEY")
 
-def get_db() -> Client:
-    global _client
-    if _client is None:
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_KEY")
-        if not url or not key:
-            raise RuntimeError("SUPABASE_URL と SUPABASE_KEY を .env に設定してください")
-        _client = create_client(url, key)
-    return _client
+def _get_headers():
+    if not URL or not KEY:
+        raise RuntimeError("SUPABASE_URL と SUPABASE_KEY を .env に設定してください")
+    return {
+        "apikey": KEY,
+        "Authorization": f"Bearer {KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"  # 書き込み時にデータを返す設定
+    }
+
+def _request(method, table, params=None, json_data=None):
+    """共通リクエスト関数"""
+    headers = _get_headers()
+    # SupabaseのREST API URL構造: {URL}/rest/v1/{table}
+    base_url = f"{URL.rstrip('/')}/rest/v1/{table}"
+    
+    response = requests.request(method, base_url, headers=headers, params=params, json=json_data)
+    response.raise_for_status()
+    return response.json()
 
 # ────────────── PayPayアカウント ──────────────
 
 def get_paypay_account(discord_user_id: int) -> dict | None:
-    """DiscordユーザーIDに紐づくPayPayアカウント情報を取得"""
-    db = get_db()
-    res = db.table("paypay_accounts").select("*").eq("discord_id", str(discord_user_id)).execute()
-    return res.data[0] if res.data else None
+    res = _request("GET", "paypay_accounts", params={"discord_id": f"eq.{discord_user_id}"})
+    return res[0] if res else None
 
 def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: str):
-    """PayPayアカウント情報をupsert"""
-    db = get_db()
-    db.table("paypay_accounts").upsert({
+    data = {
         "discord_id": str(discord_user_id),
         "phone": phone,
         "password": password,
         "uuid": uuid
-    }, on_conflict="discord_id").execute()
+    }
+    # upsertを実現するためにオンコンフリクトをヘッダーに追加
+    headers = _get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates"
+    requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
 
 # ────────────── 権限管理 ──────────────
 
 def is_user_allowed(discord_user_id: int) -> bool:
-    """ユーザーがBotの使用権限を持っているか確認"""
-    db = get_db()
-    res = db.table("allowed_users").select("discord_id").eq("discord_id", str(discord_user_id)).execute()
-    return len(res.data) > 0
+    res = _request("GET", "allowed_users", params={"discord_id": f"eq.{discord_user_id}", "select": "discord_id"})
+    return len(res) > 0
 
 def grant_permission(discord_user_id: int, granted_by: int = None, memo: str = None):
-    """ユーザーに権限を付与"""
-    db = get_db()
-    db.table("allowed_users").upsert({
+    data = {
         "discord_id": str(discord_user_id),
         "granted_by": str(granted_by) if granted_by else None,
         "memo": memo
-    }, on_conflict="discord_id").execute()
+    }
+    # Upsert処理
+    headers = _get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates"
+    requests.post(f"{URL}/rest/v1/allowed_users", headers=headers, json=data)
 
 def revoke_permission(discord_user_id: int):
-    """ユーザーの権限を剥奪"""
-    db = get_db()
-    db.table("allowed_users").delete().eq("discord_id", str(discord_user_id)).execute()
+    _request("DELETE", "allowed_users", params={"discord_id": f"eq.{discord_user_id}"})
 
 def list_allowed_users() -> list:
-    """権限を持つ全ユーザーのリストを返す"""
-    db = get_db()
-    res = db.table("allowed_users").select("*").execute()
-    return res.data
+    return _request("GET", "allowed_users")
 
 # ────────────── 管理者管理 ──────────────
 
 def is_admin(discord_user_id: int) -> bool:
-    db = get_db()
-    res = db.table("admins").select("discord_id").eq("discord_id", str(discord_user_id)).execute()
-    return len(res.data) > 0
+    res = _request("GET", "admins", params={"discord_id": f"eq.{discord_user_id}", "select": "discord_id"})
+    return len(res) > 0
 
 def add_admin(discord_user_id: int):
-    db = get_db()
-    db.table("admins").upsert({"discord_id": str(discord_user_id)}, on_conflict="discord_id").execute()
+    headers = _get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates"
+    requests.post(f"{URL}/rest/v1/admins", headers=headers, json={"discord_id": str(discord_user_id)})
 
 def remove_admin(discord_user_id: int):
-    db = get_db()
-    db.table("admins").delete().eq("discord_id", str(discord_user_id)).execute()
+    _request("DELETE", "admins", params={"discord_id": f"eq.{discord_user_id}"})
 
 # ────────────── 販売履歴 ──────────────
 
 def record_sale(vending_id: str, user_id: int, user_name: str, items: list, total_price: int):
-    db = get_db()
-    import json, time
-    db.table("sales_history").insert({
+    data = {
         "vending_id": vending_id,
         "user_id": str(user_id),
         "user_name": user_name,
-        "items": json.dumps(items, ensure_ascii=False),
+        "items": items, # JSONB型ならそのままリストで送れる
         "total_price": total_price,
         "created_at": int(time.time())
-    }).execute()
+    }
+    _request("POST", "sales_history", json_data=data)
 
 def get_sales(vending_id: str) -> list:
-    import json
-    db = get_db()
-    res = db.table("sales_history").select("*").eq("vending_id", vending_id).execute()
-    result = []
-    for row in res.data:
-        row["items"] = json.loads(row["items"]) if isinstance(row["items"], str) else row["items"]
-        result.append(row)
-    return result
+    return _request("GET", "sales_history", params={"vending_id": f"eq.{vending_id}"})
 
 # ────────────── 自販機データ ──────────────
 
 def get_vending_machines(owner_id: int = None) -> list:
-    import json
-    db = get_db()
-    query = db.table("vending_machines").select("*")
+    params = {}
     if owner_id:
-        query = query.eq("owner_id", str(owner_id))
-    res = query.execute()
-    result = []
-    for row in res.data:
-        row["custom_items"] = json.loads(row["custom_items"]) if isinstance(row["custom_items"], str) else (row["custom_items"] or [])
-        result.append(row)
-    return result
+        params["owner_id"] = f"eq.{owner_id}"
+    return _request("GET", "vending_machines", params=params)
 
 def get_vending_machine(vm_id: str) -> dict | None:
-    import json
-    db = get_db()
-    res = db.table("vending_machines").select("*").eq("id", vm_id).execute()
-    if not res.data:
-        return None
-    row = res.data[0]
-    row["custom_items"] = json.loads(row["custom_items"]) if isinstance(row["custom_items"], str) else (row["custom_items"] or [])
-    return row
+    res = _request("GET", "vending_machines", params={"id": f"eq.{vm_id}"})
+    return res[0] if res else None
 
 def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
-    import json
-    db = get_db()
-    db.table("vending_machines").insert({
+    data = {
         "id": vm_id,
         "name": name,
         "owner_id": str(owner_id),
         "role_id": None,
-        "custom_items": "[]"
-    }).execute()
-    return get_vending_machine(vm_id)
+        "custom_items": []
+    }
+    res = _request("POST", "vending_machines", json_data=data)
+    return res[0] if res else {}
 
 def update_vending_machine(vm_id: str, **kwargs):
-    import json
-    db = get_db()
-    update_data = {}
-    for k, v in kwargs.items():
-        if k == "custom_items" and isinstance(v, list):
-            update_data[k] = json.dumps(v, ensure_ascii=False)
-        else:
-            update_data[k] = v
-    db.table("vending_machines").update(update_data).eq("id", vm_id).execute()
+    _request("PATCH", "vending_machines", params={"id": f"eq.{vm_id}"}, json_data=kwargs)
 
 # ────────────── ログチャンネル ──────────────
 
 def get_log_channels(guild_id: int) -> dict:
-    db = get_db()
-    res = db.table("log_channels").select("*").eq("guild_id", str(guild_id)).execute()
-    result = {}
-    for row in res.data:
-        result[row["channel_type"]] = int(row["channel_id"])
-    return result
+    res = _request("GET", "log_channels", params={"guild_id": f"eq.{guild_id}"})
+    return {row["channel_type"]: int(row["channel_id"]) for row in res}
 
 def set_log_channel(guild_id: int, channel_type: str, channel_id: int):
-    db = get_db()
-    db.table("log_channels").upsert({
+    data = {
         "guild_id": str(guild_id),
         "channel_type": channel_type,
         "channel_id": str(channel_id)
-    }, on_conflict="guild_id,channel_type").execute()
+    }
+    headers = _get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates"
+    requests.post(f"{URL}/rest/v1/log_channels", headers=headers, json=data)
 
 # ────────────── 権限購入設定 ──────────────
 
 def get_permission_price() -> int:
-    """権限購入価格を取得（デフォルト500円）"""
-    db = get_db()
-    res = db.table("settings").select("value").eq("key", "permission_price").execute()
-    return int(res.data[0]["value"]) if res.data else 500
+    res = _request("GET", "settings", params={"key": "eq.permission_price"})
+    return int(res[0]["value"]) if res else 500
 
 def set_permission_price(price: int):
-    db = get_db()
-    db.table("settings").upsert({"key": "permission_price", "value": str(price)}, on_conflict="key").execute()
+    data = {"key": "permission_price", "value": str(price)}
+    headers = _get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates"
+    requests.post(f"{URL}/rest/v1/settings", headers=headers, json=data)
