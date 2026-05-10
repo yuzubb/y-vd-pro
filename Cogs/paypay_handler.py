@@ -32,10 +32,9 @@ class PayPayOTPModal(ui.Modal, title="PayPay OTP認証"):
             self.set_uuid, self.otp_input.value, self.otpid, self.otp_pre
         )
 
-        if otp_result == "OK":
-            # access_tokenを再取得して保存
-            login_result = await paypayu.login(self.phone, self.password, self.set_uuid)
-            access_token = login_result.get("access_token") if isinstance(login_result, dict) else None
+        # otp_resultがaccess_token文字列の場合もOKとみなす
+        if otp_result and otp_result != "ERR":
+            access_token = otp_result if otp_result != "OK" else None
             save_paypay_account(interaction.user.id, self.phone, self.password, self.set_uuid, access_token=access_token)
 
             embed = discord.Embed(
