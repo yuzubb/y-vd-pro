@@ -1,6 +1,3 @@
-"""
-Supabase DB操作モジュール (REST API版)
-"""
 import os
 import json
 import time
@@ -10,8 +7,6 @@ URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_KEY")
 
 def _get_headers():
-    if not URL or not KEY:
-        raise RuntimeError("SUPABASE_URL と SUPABASE_KEY を .env に設定してください")
     return {
         "apikey": KEY,
         "Authorization": f"Bearer {KEY}",
@@ -27,17 +22,19 @@ def _request(method, table, params=None, json_data=None):
     return response.json()
 
 def _parse_fields(row):
-    """JSONBフィールドを辞書に変換するヘルパー。TypeError対策。"""
-    if not row: return row
+    """データの型を安全に変換する(AttributeError対策)"""
+    if not isinstance(row, dict):
+        return {}
     for field in ["custom_items", "items"]:
-        if field in row and isinstance(row[field], str):
+        val = row.get(field)
+        if isinstance(val, str):
             try:
-                row[field] = json.loads(row[field])
+                row[field] = json.loads(val)
             except:
                 row[field] = []
+        elif val is None:
+            row[field] = []
     return row
-
-# ────────────── PayPayアカウント ──────────────
 
 def get_paypay_account(discord_user_id: int) -> dict | None:
     res = _request("GET", "paypay_accounts", params={"discord_id": f"eq.{discord_user_id}"})
@@ -49,28 +46,16 @@ def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: s
     headers["Prefer"] = "resolution=merge-duplicates"
     requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
 
-# ────────────── 権限・管理者管理（復元） ──────────────
-
 def is_user_allowed(discord_user_id: int) -> bool:
-    res = _request("GET", "allowed_users", params={"discord_id": f"eq.{discord_user_id}", "select": "discord_id"})
+    res = _request("GET", "allowed_users", params={"discord_id": f"eq.{discord_user_id}"})
     return len(res) > 0
 
 def is_admin(discord_user_id: int) -> bool:
-    """ImportError対策で復元"""
-    res = _request("GET", "admins", params={"discord_id": f"eq.{discord_user_id}", "select": "discord_id"})
+    res = _request("GET", "admins", params={"discord_id": f"eq.{discord_user_id}"})
     return len(res) > 0
 
-# ────────────── 販売履歴・自販機 ──────────────
-
 def record_sale(vending_id: str, user_id: int, user_name: str, items: list, total_price: int):
-    data = {
-        "vending_id": vending_id,
-        "user_id": str(user_id),
-        "user_name": user_name,
-        "items": items,
-        "total_price": total_price,
-        "created_at": int(time.time())
-    }
+    data = {"vending_id": vending_id, "user_id": str(user_id), "user_name": user_name, "items": items, "total_price": total_price, "created_at": int(time.time())}
     _request("POST", "sales_history", json_data=data)
 
 def get_sales(vending_id: str) -> list:
@@ -87,18 +72,16 @@ def get_vending_machine(vm_id: str) -> dict | None:
     return _parse_fields(res[0]) if res else None
 
 def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
-    data = {"id": vm_id, "name": name, "owner_id": str(owner_id), "role_id": None, "custom_items": []}
+    data = {"id": vm_id, "name": name, "owner_id": str(owner_id), "custom_items": []}
     res = _request("POST", "vending_machines", json_data=data)
     return _parse_fields(res[0]) if res else {}
 
 def update_vending_machine(vm_id: str, **kwargs):
     _request("PATCH", "vending_machines", params={"id": f"eq.{vm_id}"}, json_data=kwargs)
 
-# ────────────── ログチャンネル ──────────────
-
 def get_log_channels(guild_id: int) -> dict:
     res = _request("GET", "log_channels", params={"guild_id": f"eq.{guild_id}"})
-    return {row["channel_type"]: int(row["channel_id"]) for row in res}
+    return {row["channel_type"]: int(row["channel_id"]) for row in res if isinstance(row, dict)}
 
 def set_log_channel(guild_id: int, channel_type: str, channel_id: int):
     data = {"guild_id": str(guild_id), "channel_type": channel_type, "channel_id": str(channel_id)}
