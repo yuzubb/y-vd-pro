@@ -53,7 +53,8 @@ async def login_otp(set_uuid,otp,otpid,otp_pre):
                 if login_response["response_type"]=="ErrorResponse":
                     return "ERR"
             except:
-                return "OK"
+                # access_tokenが取れた場合はそれを返す、なければ"OK"
+                return login_response.get("access_token") or "OK"
 
 async def check_link(cd):
     if "https://" in cd:
