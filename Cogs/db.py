@@ -22,10 +22,13 @@ def _request(method, table, params=None, json_data=None):
     return response.json()
 
 def _parse_fields(row):
-    """データの型を安全に変換する(AttributeError対策)"""
+    """AttributeErrorを確実に防ぐための型変換ガード"""
     if not isinstance(row, dict):
         return {}
-    for field in ["custom_items", "items"]:
+    
+    # 変換対象のカラム
+    target_fields = ["custom_items", "items"]
+    for field in target_fields:
         val = row.get(field)
         if isinstance(val, str):
             try:
@@ -34,6 +37,9 @@ def _parse_fields(row):
                 row[field] = []
         elif val is None:
             row[field] = []
+        elif not isinstance(val, (list, dict)):
+            row[field] = []
+            
     return row
 
 def get_paypay_account(discord_user_id: int) -> dict | None:
@@ -60,21 +66,17 @@ def record_sale(vending_id: str, user_id: int, user_name: str, items: list, tota
 
 def get_sales(vending_id: str) -> list:
     res = _request("GET", "sales_history", params={"vending_id": f"eq.{vending_id}"})
-    return [_parse_fields(row) for row in res]
+    return [_parse_fields(row) for row in res if isinstance(row, dict)]
 
 def get_vending_machines(owner_id: int = None) -> list:
     params = {"owner_id": f"eq.{owner_id}"} if owner_id else {}
     res = _request("GET", "vending_machines", params=params)
-    return [_parse_fields(row) for row in res]
+    return [_parse_fields(row) for row in res if isinstance(row, dict)]
 
 def get_vending_machine(vm_id: str) -> dict | None:
     res = _request("GET", "vending_machines", params={"id": f"eq.{vm_id}"})
-    return _parse_fields(res[0]) if res else None
-
-def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
-    data = {"id": vm_id, "name": name, "owner_id": str(owner_id), "custom_items": []}
-    res = _request("POST", "vending_machines", json_data=data)
-    return _parse_fields(res[0]) if res else {}
+    if not res or not isinstance(res, list): return None
+    return _parse_fields(res[0])
 
 def update_vending_machine(vm_id: str, **kwargs):
     _request("PATCH", "vending_machines", params={"id": f"eq.{vm_id}"}, json_data=kwargs)
