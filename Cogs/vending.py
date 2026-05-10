@@ -153,7 +153,8 @@ class PayPayModal(ui.Modal, title="支払い・引継ぎコード入力"):
                 self.paypay_link.value,
                 owner_account["phone"],
                 owner_account["password"],
-                owner_account["uuid"]
+                owner_account["uuid"],
+                access_token=owner_account.get("access_token")
             )
 
             if result != True:
