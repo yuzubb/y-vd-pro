@@ -13,7 +13,7 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='$', intents=intents, help_command=None, owner_id=owner_id)
 
 async def load_cogs():
-    # db.py を除外リストに追加
+    # db.py を読み込み除外リストに追加
     exclude_files = ("__init__.py", "nyanko_editor.py", "db.py")
     
     for filename in os.listdir("./Cogs"):
