@@ -47,16 +47,29 @@ def get_paypay_account(discord_user_id: int) -> dict | None:
     res = _request("GET", "paypay_accounts", params={"discord_id": f"eq.{discord_user_id}"})
     return res[0] if res else None
 
-def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: str):
+def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: str, access_token: str = None):
     data = {
         "discord_id": str(discord_user_id),
         "phone": phone,
         "password": password,
         "uuid": uuid
     }
+    if access_token:
+        data["access_token"] = access_token
     headers = _get_headers()
     headers["Prefer"] = "resolution=merge-duplicates"
     requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
+
+def update_paypay_token(discord_user_id: int, access_token: str):
+    """access_tokenだけ更新する"""
+    headers = _get_headers()
+    headers["Prefer"] = "return=representation"
+    requests.patch(
+        f"{URL}/rest/v1/paypay_accounts",
+        headers=headers,
+        params={"discord_id": f"eq.{discord_user_id}"},
+        json={"access_token": access_token}
+    )
 
 # ────────────── 権限管理 ──────────────
 
@@ -166,3 +179,68 @@ def set_permission_price(price: int):
     headers = _get_headers()
     headers["Prefer"] = "resolution=merge-duplicates"
     requests.post(f"{URL}/rest/v1/settings", headers=headers, json=data)
+
+# ────────────── ストック型自販機 ──────────────
+
+def create_stock_shop(shop_id: str, name: str, owner_id: int, price: int) -> dict:
+    data = {
+        "id": shop_id,
+        "name": name,
+        "owner_id": str(owner_id),
+        "price": price,
+    }
+    res = _request("POST", "stock_shops", json_data=data)
+    return res[0] if res else {}
+
+def get_stock_shops(owner_id: int = None) -> list:
+    params = {}
+    if owner_id:
+        params["owner_id"] = f"eq.{owner_id}"
+    return _request("GET", "stock_shops", params=params)
+
+def get_stock_shop(shop_id: str) -> dict | None:
+    res = _request("GET", "stock_shops", params={"id": f"eq.{shop_id}"})
+    return res[0] if res else None
+
+def update_stock_shop(shop_id: str, **kwargs):
+    _request("PATCH", "stock_shops", params={"id": f"eq.{shop_id}"}, json_data=kwargs)
+
+def add_stock_item(shop_id: str, email: str, password: str, note: str = "") -> dict:
+    data = {
+        "shop_id": shop_id,
+        "email": email,
+        "password": password,
+        "note": note,
+        "sold": False,
+    }
+    res = _request("POST", "stock_items", json_data=data)
+    return res[0] if res else {}
+
+def pop_stock_item(shop_id: str) -> dict | None:
+    res = _request("GET", "stock_items", params={
+        "shop_id": f"eq.{shop_id}",
+        "sold": "eq.false",
+        "limit": "1"
+    })
+    if not res:
+        return None
+    item = res[0]
+    _request("PATCH", "stock_items", params={"id": f"eq.{item['id']}"}, json_data={"sold": True})
+    return item
+
+def count_stock(shop_id: str) -> int:
+    res = _request("GET", "stock_items", params={
+        "shop_id": f"eq.{shop_id}",
+        "sold": "eq.false",
+        "select": "id"
+    })
+    return len(res)
+
+def list_stock_items(shop_id: str, sold: bool = False) -> list:
+    return _request("GET", "stock_items", params={
+        "shop_id": f"eq.{shop_id}",
+        "sold": f"eq.{str(sold).lower()}"
+    })
+
+def delete_stock_item(item_id: int):
+    _request("DELETE", "stock_items", params={"id": f"eq.{item_id}"})
