@@ -1,3 +1,6 @@
+"""
+Supabase DB操作モジュール (REST API版)
+"""
 import os
 import json
 import time
@@ -24,21 +27,17 @@ def _request(method, table, params=None, json_data=None):
     return response.json()
 
 def _parse_fields(row):
-    """JSONBフィールドを辞書に変換するヘルパー"""
+    """JSONBフィールドを辞書に変換するヘルパー。TypeError対策。"""
     if not row: return row
-    # custom_itemsフィールドの処理
-    if "custom_items" in row and isinstance(row["custom_items"], str):
-        try:
-            row["custom_items"] = json.loads(row["custom_items"])
-        except:
-            row["custom_items"] = []
-    # itemsフィールド(販売履歴用)の処理
-    if "items" in row and isinstance(row["items"], str):
-        try:
-            row["items"] = json.loads(row["items"])
-        except:
-            row["items"] = []
+    for field in ["custom_items", "items"]:
+        if field in row and isinstance(row[field], str):
+            try:
+                row[field] = json.loads(row[field])
+            except:
+                row[field] = []
     return row
+
+# ────────────── PayPayアカウント ──────────────
 
 def get_paypay_account(discord_user_id: int) -> dict | None:
     res = _request("GET", "paypay_accounts", params={"discord_id": f"eq.{discord_user_id}"})
@@ -50,9 +49,18 @@ def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: s
     headers["Prefer"] = "resolution=merge-duplicates"
     requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
 
+# ────────────── 権限・管理者管理（復元） ──────────────
+
 def is_user_allowed(discord_user_id: int) -> bool:
     res = _request("GET", "allowed_users", params={"discord_id": f"eq.{discord_user_id}", "select": "discord_id"})
     return len(res) > 0
+
+def is_admin(discord_user_id: int) -> bool:
+    """ImportError対策で復元"""
+    res = _request("GET", "admins", params={"discord_id": f"eq.{discord_user_id}", "select": "discord_id"})
+    return len(res) > 0
+
+# ────────────── 販売履歴・自販機 ──────────────
 
 def record_sale(vending_id: str, user_id: int, user_name: str, items: list, total_price: int):
     data = {
@@ -85,6 +93,8 @@ def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
 
 def update_vending_machine(vm_id: str, **kwargs):
     _request("PATCH", "vending_machines", params={"id": f"eq.{vm_id}"}, json_data=kwargs)
+
+# ────────────── ログチャンネル ──────────────
 
 def get_log_channels(guild_id: int) -> dict:
     res = _request("GET", "log_channels", params={"guild_id": f"eq.{guild_id}"})
