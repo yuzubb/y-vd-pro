@@ -49,12 +49,25 @@ async def login_otp(set_uuid,otp,otpid,otp_pre):
     async with aiohttp.ClientSession() as session:
         async with session.post("https://www.paypay.ne.jp/app/v1/oauth/token", headers=headers, json=payload) as response:
             login_response = await response.json()
-            try:
-                if login_response["response_type"]=="ErrorResponse":
-                    return "ERR"
-            except:
-                # access_tokenが取れた場合はそれを返す、なければ"OK"
-                return login_response.get("access_token") or "OK"
+            print(f"--- OTP Login Response ---")
+            print(login_response)
+            print(f"--------------------------")
+
+            # エラーチェック
+            if login_response.get("response_type") == "ErrorResponse":
+                return "ERR"
+
+            # access_token取得
+            access_token = login_response.get("access_token")
+            if access_token:
+                return access_token
+
+            # access_tokenがない場合はリフレッシュトークンで再取得を試みる
+            refresh_token = login_response.get("refresh_token")
+            if refresh_token:
+                return refresh_token
+
+            return "OK"
 
 async def check_link(cd):
     if "https://" in cd:
