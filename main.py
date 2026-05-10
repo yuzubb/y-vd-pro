@@ -13,7 +13,7 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='$', intents=intents, help_command=None, owner_id=owner_id)
 
 async def load_cogs():
-    # 読み込みから除外するファイル
+    # db.py を除外リストに追加
     exclude_files = ("__init__.py", "nyanko_editor.py", "db.py")
     
     for filename in os.listdir("./Cogs"):
@@ -24,7 +24,6 @@ async def load_cogs():
             except Exception as e:
                 print(f"❌ Failed to load {filename}: {e}")
                 traceback.print_exc()
-    
     await bot.tree.sync()
     print("✅ Commands synced")
 
@@ -40,7 +39,6 @@ async def on_ready():
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CheckFailure):
-        print(f"❌ {interaction.user}によるコマンド({interaction.command.name})の実行がブロックされました。")
         return
     print(f"❌ Error: {error}")
     traceback.print_exc()
