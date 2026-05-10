@@ -5,7 +5,6 @@ import os
 import traceback
 from dotenv import load_dotenv
 
-# 起動時に環境変数を確実にロード
 load_dotenv()
 token = os.getenv('TOKEN')
 owner_id = int(os.getenv('OWNER_ID', 0))
@@ -14,7 +13,6 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='$', intents=intents, help_command=None, owner_id=owner_id)
 
 async def load_cogs():
-    # システムファイルをCogとして読み込まない
     exclude_files = ("__init__.py", "nyanko_editor.py", "db.py", "utils.py")
     for filename in os.listdir("./Cogs"):
         if filename.endswith(".py") and filename not in exclude_files:
@@ -31,10 +29,10 @@ bot.setup_hook = load_cogs
 @bot.event
 async def on_ready():
     print(f"🤖 Bot Is Ready: {bot.user}")
-    await bot.change_presence(activity=discord.Game(name="❤にゃんこ代行❤"))
+    await bot.change_presence(activity=discord.Game(name="❤にゃんこ大戦争自動代行❤"))
 
 if __name__ == "__main__":
     if not token:
-        print("❌ TOKENが設定されていません。.envを確認してください。")
+        print("❌ TOKENが設定されていません。")
     else:
         bot.run(token)
