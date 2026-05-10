@@ -33,8 +33,10 @@ class PayPayOTPModal(ui.Modal, title="PayPay OTP認証"):
         )
 
         if otp_result == "OK":
-            # Supabaseに保存（再起動後も持続）
-            save_paypay_account(interaction.user.id, self.phone, self.password, self.set_uuid)
+            # access_tokenを再取得して保存
+            login_result = await paypayu.login(self.phone, self.password, self.set_uuid)
+            access_token = login_result.get("access_token") if isinstance(login_result, dict) else None
+            save_paypay_account(interaction.user.id, self.phone, self.password, self.set_uuid, access_token=access_token)
 
             embed = discord.Embed(
                 title="✅ 登録完了",
@@ -86,7 +88,7 @@ class PaypayCog(commands.Cog):
             await interaction.response.send_modal(modal)
 
         elif "access_token" in result:
-            save_paypay_account(interaction.user.id, phone, password, set_uuid)
+            save_paypay_account(interaction.user.id, phone, password, set_uuid, access_token=result["access_token"])
             embed = discord.Embed(
                 title="✅ 登録完了",
                 description="ログインに成功しました（認証コード不要）。\nサーバー再起動後も引き続き利用できます。",
