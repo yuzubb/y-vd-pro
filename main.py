@@ -14,7 +14,7 @@ bot = commands.Bot(command_prefix='$', intents=intents, help_command=None, owner
 
 async def load_cogs():
     for filename in os.listdir("./Cogs"):
-        if filename.endswith(".py") and filename not in ("__init__.py", "nyanko_editor.py", "db.py", "utils.py", "paypay_handler.py"):
+        if filename.endswith(".py") and filename not in ("__init__.py", "nyanko_editor.py", "db.py", "utils.py"):
             try:
                 await bot.load_extension(f"Cogs.{filename[:-3]}")
                 print(f"✅ Loaded {filename}")
