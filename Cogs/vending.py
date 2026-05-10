@@ -134,11 +134,18 @@ class PayPayModal(ui.Modal, title="支払い・引継ぎコード入力"):
                     ephemeral=True
                 )
 
-            # オーナーのPayPayアカウントで受け取り（Supabaseから取得）
-            owner_account = get_paypay_account(self.bot.owner_id)
+            # 自販機設置者のPayPayアカウントで受け取り（Supabaseから取得）
+            vm = get_vending_machine(self.vending_id)
+            if not vm:
+                return await interaction.followup.send(
+                    embed=discord.Embed(title="❌ エラー", description="自販機が見つかりません", color=0xff0000),
+                    ephemeral=True
+                )
+            vm_owner_id = int(vm["owner_id"])
+            owner_account = get_paypay_account(vm_owner_id)
             if not owner_account:
                 return await interaction.followup.send(
-                    embed=discord.Embed(title="❌ エラー", description="オーナーのPayPayアカウントが登録されていません", color=0xff0000),
+                    embed=discord.Embed(title="❌ エラー", description="自販機設置者のPayPayアカウントが登録されていません", color=0xff0000),
                     ephemeral=True
                 )
 
@@ -209,7 +216,6 @@ class PayPayModal(ui.Modal, title="支払い・引継ぎコード入力"):
                 )
 
                 # ロール付与
-                vm = get_vending_machine(self.vending_id)
                 if vm and vm.get("role_id"):
                     role = self.guild.get_role(int(vm["role_id"]))
                     if role and role not in self.user.roles:
