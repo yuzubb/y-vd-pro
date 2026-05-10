@@ -7,6 +7,8 @@ URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_KEY")
 
 def _get_headers():
+    if not URL or not KEY:
+        raise RuntimeError("SUPABASE_URL と SUPABASE_KEY を .env に設定してください")
     return {
         "apikey": KEY,
         "Authorization": f"Bearer {KEY}",
@@ -21,15 +23,21 @@ def _request(method, table, params=None, json_data=None):
     response.raise_for_status()
     return response.json()
 
-def _parse_json_fields(row, field_name):
-    """取得したJSON文字列をPythonのオブジェクトに変換する"""
+def _parse_fields(row):
+    """JSONBフィールドを辞書に変換するヘルパー"""
     if not row: return row
-    val = row.get(field_name)
-    if isinstance(val, str):
+    # custom_itemsフィールドの処理
+    if "custom_items" in row and isinstance(row["custom_items"], str):
         try:
-            row[field_name] = json.loads(val)
+            row["custom_items"] = json.loads(row["custom_items"])
         except:
-            row[field_name] = []
+            row["custom_items"] = []
+    # itemsフィールド(販売履歴用)の処理
+    if "items" in row and isinstance(row["items"], str):
+        try:
+            row["items"] = json.loads(row["items"])
+        except:
+            row["items"] = []
     return row
 
 def get_paypay_account(discord_user_id: int) -> dict | None:
@@ -59,22 +67,21 @@ def record_sale(vending_id: str, user_id: int, user_name: str, items: list, tota
 
 def get_sales(vending_id: str) -> list:
     res = _request("GET", "sales_history", params={"vending_id": f"eq.{vending_id}"})
-    return [_parse_json_fields(row, "items") for row in res]
+    return [_parse_fields(row) for row in res]
 
 def get_vending_machines(owner_id: int = None) -> list:
     params = {"owner_id": f"eq.{owner_id}"} if owner_id else {}
     res = _request("GET", "vending_machines", params=params)
-    return [_parse_json_fields(row, "custom_items") for row in res]
+    return [_parse_fields(row) for row in res]
 
 def get_vending_machine(vm_id: str) -> dict | None:
     res = _request("GET", "vending_machines", params={"id": f"eq.{vm_id}"})
-    if not res: return None
-    return _parse_json_fields(res[0], "custom_items")
+    return _parse_fields(res[0]) if res else None
 
 def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
     data = {"id": vm_id, "name": name, "owner_id": str(owner_id), "role_id": None, "custom_items": []}
     res = _request("POST", "vending_machines", json_data=data)
-    return _parse_json_fields(res[0], "custom_items") if res else {}
+    return _parse_fields(res[0]) if res else {}
 
 def update_vending_machine(vm_id: str, **kwargs):
     _request("PATCH", "vending_machines", params={"id": f"eq.{vm_id}"}, json_data=kwargs)
