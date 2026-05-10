@@ -18,18 +18,28 @@ def _get_headers():
         "apikey": KEY,
         "Authorization": f"Bearer {KEY}",
         "Content-Type": "application/json",
-        "Prefer": "return=representation"  # 書き込み時にデータを返す設定
+        "Prefer": "return=representation"
     }
 
 def _request(method, table, params=None, json_data=None):
     """共通リクエスト関数"""
     headers = _get_headers()
-    # SupabaseのREST API URL構造: {URL}/rest/v1/{table}
     base_url = f"{URL.rstrip('/')}/rest/v1/{table}"
     
     response = requests.request(method, base_url, headers=headers, params=params, json=json_data)
     response.raise_for_status()
     return response.json()
+
+def _parse_json_field(row, field_name):
+    """特定のカラムが文字列だった場合に辞書/リストへ変換する"""
+    if not row: return row
+    val = row.get(field_name)
+    if isinstance(val, str):
+        try:
+            row[field_name] = json.loads(val)
+        except:
+            row[field_name] = [] if "items" in field_name else {}
+    return row
 
 # ────────────── PayPayアカウント ──────────────
 
@@ -44,7 +54,6 @@ def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: s
         "password": password,
         "uuid": uuid
     }
-    # upsertを実現するためにオンコンフリクトをヘッダーに追加
     headers = _get_headers()
     headers["Prefer"] = "resolution=merge-duplicates"
     requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
@@ -61,7 +70,6 @@ def grant_permission(discord_user_id: int, granted_by: int = None, memo: str = N
         "granted_by": str(granted_by) if granted_by else None,
         "memo": memo
     }
-    # Upsert処理
     headers = _get_headers()
     headers["Prefer"] = "resolution=merge-duplicates"
     requests.post(f"{URL}/rest/v1/allowed_users", headers=headers, json=data)
@@ -93,14 +101,15 @@ def record_sale(vending_id: str, user_id: int, user_name: str, items: list, tota
         "vending_id": vending_id,
         "user_id": str(user_id),
         "user_name": user_name,
-        "items": items, # JSONB型ならそのままリストで送れる
+        "items": items,
         "total_price": total_price,
         "created_at": int(time.time())
     }
     _request("POST", "sales_history", json_data=data)
 
 def get_sales(vending_id: str) -> list:
-    return _request("GET", "sales_history", params={"vending_id": f"eq.{vending_id}"})
+    res = _request("GET", "sales_history", params={"vending_id": f"eq.{vending_id}"})
+    return [_parse_json_field(row, "items") for row in res]
 
 # ────────────── 自販機データ ──────────────
 
@@ -108,11 +117,13 @@ def get_vending_machines(owner_id: int = None) -> list:
     params = {}
     if owner_id:
         params["owner_id"] = f"eq.{owner_id}"
-    return _request("GET", "vending_machines", params=params)
+    res = _request("GET", "vending_machines", params=params)
+    return [_parse_json_field(row, "custom_items") for row in res]
 
 def get_vending_machine(vm_id: str) -> dict | None:
     res = _request("GET", "vending_machines", params={"id": f"eq.{vm_id}"})
-    return res[0] if res else None
+    if not res: return None
+    return _parse_json_field(res[0], "custom_items")
 
 def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
     data = {
@@ -123,7 +134,7 @@ def create_vending_machine(vm_id: str, name: str, owner_id: int) -> dict:
         "custom_items": []
     }
     res = _request("POST", "vending_machines", json_data=data)
-    return res[0] if res else {}
+    return _parse_json_field(res[0], "custom_items") if res else {}
 
 def update_vending_machine(vm_id: str, **kwargs):
     _request("PATCH", "vending_machines", params={"id": f"eq.{vm_id}"}, json_data=kwargs)
