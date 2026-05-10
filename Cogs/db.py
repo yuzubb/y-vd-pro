@@ -448,3 +448,38 @@ def health_check():
 if __name__ == "__main__":
     print("DB HEALTH:", health_check())
 
+
+
+# =========================================================
+# Aliases for permission_manager.py compatibility
+# =========================================================
+
+def grant_permission(discord_id: int, granted_by=None, memo=None) -> bool:
+    """add_allowed_user のエイリアス"""
+    return add_allowed_user(discord_id, granted_by=granted_by, memo=memo)
+
+
+def revoke_permission(discord_id: int) -> bool:
+    """remove_allowed_user のエイリアス"""
+    return remove_allowed_user(discord_id)
+
+
+def list_allowed_users() -> list:
+    """get_allowed_users のエイリアス"""
+    return get_allowed_users()
+
+
+def get_permission_price() -> int:
+    """権限購入価格を取得（設定になければデフォルト500円）"""
+    val = get_setting("permission_price")
+    if val is None:
+        return 500
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 500
+
+
+def set_permission_price(price: int) -> bool:
+    """権限購入価格を保存"""
+    return set_setting("permission_price", str(price))
