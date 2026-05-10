@@ -58,7 +58,12 @@ def save_paypay_account(discord_user_id: int, phone: str, password: str, uuid: s
         data["access_token"] = access_token
     headers = _get_headers()
     headers["Prefer"] = "resolution=merge-duplicates"
-    requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
+    print(f"--- save_paypay_account ---")
+    print(f"data: { {k: v[:10]+'...' if k in ('password','access_token','uuid') and v else v for k, v in data.items()} }")
+    res = requests.post(f"{URL}/rest/v1/paypay_accounts", headers=headers, json=data)
+    print(f"status: {res.status_code}")
+    print(f"response: {res.text[:200]}")
+    print(f"--------------------------")
 
 def update_paypay_token(discord_user_id: int, access_token: str):
     """access_tokenだけ更新する"""
