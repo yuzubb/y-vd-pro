@@ -2,9 +2,6 @@ import discord
 from discord.ext import commands
 
 from Cogs.db import (
-    add_allowed_user,
-    get_allowed_users,
-    is_allowed_user,
     save_paypay_account,
     get_paypay_account
 )
@@ -13,71 +10,6 @@ from Cogs.db import (
 class AccountVending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    # =====================================================
-    # 権限付与
-    # =====================================================
-
-    @commands.hybrid_command(name="権限付与")
-    async def grant_permission(self, ctx, user: discord.User):
-        try:
-            ok = add_allowed_user(
-                discord_id=user.id,
-                granted_by=ctx.author.id,
-                memo="discord command"
-            )
-
-            if ok:
-                embed = discord.Embed(
-                    title="✅ 権限付与",
-                    description=f"{user.mention} にBot使用権限を付与しました",
-                    color=0x00ff88
-                )
-            else:
-                embed = discord.Embed(
-                    title="❌ エラー",
-                    description="Supabase保存に失敗しました",
-                    color=0xff0000
-                )
-
-            await ctx.reply(embed=embed)
-
-        except Exception as e:
-            await ctx.reply(f"エラー: {e}")
-
-    # =====================================================
-    # 権限一覧
-    # =====================================================
-
-    @commands.hybrid_command(name="権限一覧")
-    async def permission_list(self, ctx):
-        try:
-            users = get_allowed_users()
-
-            if len(users) == 0:
-                embed = discord.Embed(
-                    title="権限一覧",
-                    description="権限を持つユーザーはいません",
-                    color=0x3498db
-                )
-
-                return await ctx.reply(embed=embed)
-
-            text = ""
-
-            for u in users:
-                text += f"<@{u['discord_id']}>\n"
-
-            embed = discord.Embed(
-                title="権限一覧",
-                description=text,
-                color=0x3498db
-            )
-
-            await ctx.reply(embed=embed)
-
-        except Exception as e:
-            await ctx.reply(f"エラー: {e}")
 
     # =====================================================
     # Token Login
