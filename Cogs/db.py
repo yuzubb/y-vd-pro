@@ -444,6 +444,40 @@ def health_check():
 
     return result is not None
 
+def grant_permission(discord_id: int, granted_by=None, memo=None) -> bool:
+    return add_allowed_user(discord_id, granted_by=granted_by, memo=memo)
+
+def revoke_permission(discord_id: int) -> bool:
+    return remove_allowed_user(discord_id)
+
+def list_allowed_users() -> list:
+    return get_allowed_users()
+
+def get_permission_price() -> int:
+    val = get_setting("permission_price")
+    if val is None:
+        return 500
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 500
+
+def set_permission_price(price: int) -> bool:
+    return set_setting("permission_price", str(price))
+
+def get_all_paypay_accounts() -> list:
+    result = _request("GET", "paypay_accounts?select=*", headers=_headers())
+    return result if result else []
+
+def update_vending_machine(vending_id: str, **kwargs) -> bool:
+    result = _request(
+        "PATCH",
+        f"vending_machines?id=eq.{vending_id}",
+        headers=_headers({"Prefer": "return=minimal"}),
+        json=kwargs
+    )
+    return result is not None
+
 
 if __name__ == "__main__":
     print("DB HEALTH:", health_check())
